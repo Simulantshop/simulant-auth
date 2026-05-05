@@ -2,7 +2,13 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.env.*.bak*
+.env.local.bak*
 .DS_Store
 *.log
 dist/
 build/
+
+# Migration artifacts — contain user PII (emails, names)
+stack-export.json
+stack-snapshot.json
