@@ -46,6 +46,17 @@ export const auth = betterAuth({
     },
   },
 
+  /** Email verification flow. Defaults are off (requireEmailVerification
+   *  is false above) but admin-created users can still trigger it via
+   *  api.sendVerificationEmail; wiring our Danish template here means
+   *  the upstream English fallback never fires. */
+  emailVerification: {
+    sendVerificationEmail: async ({ user, url }) => {
+      const { sendVerificationEmail } = await import("./email");
+      await sendVerificationEmail({ to: user.email, name: user.name, url });
+    },
+  },
+
   trustedOrigins,
 
   advanced: {
@@ -67,6 +78,20 @@ export const auth = betterAuth({
       allowUserToCreateOrganization: false,
       organizationLimit: 50,
       membershipLimit: 5000,
+      /** Org-invite mailer. Without this the plugin creates the
+       *  invitation row but no email goes out — easy way to ghost
+       *  invitees. Ours is Danish-localised. */
+      sendInvitationEmail: async ({ id, email, organization, inviter, role }) => {
+        const { sendOrgInvitation } = await import("./email");
+        const inviteUrl = `${process.env.BETTER_AUTH_URL?.replace(/\/+$/, "") ?? ""}/auth/accept-invitation/${id}`;
+        await sendOrgInvitation({
+          to: email,
+          inviterName: inviter.user.name,
+          orgName: organization.name,
+          role: String(role),
+          url: inviteUrl,
+        });
+      },
     }),
     admin({
       defaultRole: "user",

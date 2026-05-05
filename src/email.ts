@@ -53,6 +53,68 @@ export async function sendPasswordReset({
   );
 }
 
+/** Sent when Better-Auth wants the user to confirm their email
+ *  (e.g. after admin createUser, or when emailAndPassword.requireEmail-
+ *  Verification flips to true in the future). */
+export async function sendVerificationEmail({
+  to,
+  name,
+  url,
+}: {
+  to: string;
+  name: string | null | undefined;
+  url: string;
+}): Promise<void> {
+  const subject = "Bekræft din e-mail på Simulant";
+  const html = renderVerificationEmail({ name, url });
+
+  if (process.env.SMTP_HOST) {
+    await sendViaSmtp({ to, subject, html });
+    return;
+  }
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend({ to, subject, html });
+    return;
+  }
+  console.warn(
+    "[simulant-auth] No email backend configured. Verification URL:",
+    url,
+  );
+}
+
+/** Sent when an org admin invites someone via the organization plugin's
+ *  createInvitation API. Without this wired, invitations get created
+ *  in the DB but the invitee never hears about it. */
+export async function sendOrgInvitation({
+  to,
+  inviterName,
+  orgName,
+  role,
+  url,
+}: {
+  to: string;
+  inviterName: string | null | undefined;
+  orgName: string;
+  role: string;
+  url: string;
+}): Promise<void> {
+  const subject = `Invitation til ${orgName} på Simulant`;
+  const html = renderOrgInvitationEmail({ inviterName, orgName, role, url });
+
+  if (process.env.SMTP_HOST) {
+    await sendViaSmtp({ to, subject, html });
+    return;
+  }
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend({ to, subject, html });
+    return;
+  }
+  console.warn(
+    "[simulant-auth] No email backend configured. Invitation URL:",
+    url,
+  );
+}
+
 /** Send a 6-digit email-OTP code. Plugin calls this for sign-in,
  *  email-verification, and forget-password flows; `type` tells us
  *  which copy to render. */
@@ -168,6 +230,63 @@ function renderResetEmail({
     <a href="${escapeHtml(url)}" style="display: inline-block; padding: 12px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500;">Nulstil kodeord</a>
   </p>
   <p style="font-size: 13px; color: #666;">Hvis du ikke bad om dette, kan du ignorere mailen.</p>
+  <p style="font-size: 13px; color: #666;">— Simulant</p>
+</body>
+</html>`;
+}
+
+function renderVerificationEmail({
+  name,
+  url,
+}: {
+  name: string | null | undefined;
+  url: string;
+}): string {
+  const greeting = name ? `Hej ${escapeHtml(name)},` : "Hej,";
+  return `<!doctype html>
+<html lang="da">
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">
+  <h1 style="font-size: 20px; font-weight: 600;">${greeting}</h1>
+  <p>Bekræft din e-mailadresse for at aktivere din Simulant-konto. Linket virker i 24 timer.</p>
+  <p style="margin: 32px 0;">
+    <a href="${escapeHtml(url)}" style="display: inline-block; padding: 12px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500;">Bekræft e-mail</a>
+  </p>
+  <p style="font-size: 13px; color: #666;">Hvis du ikke har oprettet en Simulant-konto, kan du ignorere mailen.</p>
+  <p style="font-size: 13px; color: #666;">— Simulant</p>
+</body>
+</html>`;
+}
+
+function renderOrgInvitationEmail({
+  inviterName,
+  orgName,
+  role,
+  url,
+}: {
+  inviterName: string | null | undefined;
+  orgName: string;
+  role: string;
+  url: string;
+}): string {
+  // Map Better-Auth's role slugs to Danish labels in the email body
+  // so the invitee sees "lærer" rather than "workspace_admin".
+  const roleLabels: Record<string, string> = {
+    superadmin: "superadmin",
+    workspace_admin: "lærer / workspace-admin",
+    student_manager: "lærer-assistent",
+    student: "elev",
+  };
+  const roleLabel = roleLabels[role] ?? role;
+  const inviter = inviterName ? escapeHtml(inviterName) : "En kollega";
+  return `<!doctype html>
+<html lang="da">
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">
+  <h1 style="font-size: 20px; font-weight: 600;">Du er inviteret til ${escapeHtml(orgName)}</h1>
+  <p>${inviter} har inviteret dig til at deltage i <strong>${escapeHtml(orgName)}</strong> på Simulant som <strong>${escapeHtml(roleLabel)}</strong>.</p>
+  <p style="margin: 32px 0;">
+    <a href="${escapeHtml(url)}" style="display: inline-block; padding: 12px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500;">Accepter invitation</a>
+  </p>
+  <p style="font-size: 13px; color: #666;">Hvis du ikke kender afsenderen, kan du ignorere mailen.</p>
   <p style="font-size: 13px; color: #666;">— Simulant</p>
 </body>
 </html>`;
