@@ -24,11 +24,13 @@
     "drizzle-orm": "^0.45.2"
   },
   "dependencies": {
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "nodemailer": "^8.0.7"
   },
   "devDependencies": {
     "@better-auth/cli": "^1.4.22",
     "@libsql/client": "^0.14.0",
+    "@types/nodemailer": "^8.0.0",
     "better-auth": "^1.6.0",
     "drizzle-kit": "^0.31.4",
     "drizzle-orm": "^0.45.2",

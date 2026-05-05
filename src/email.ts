@@ -1,5 +1,31 @@
-const FROM = "Simulant <noreply@simulant.dk>";
-const RESEND_KEY = () => process.env.RESEND_API_KEY;
+/**
+ * Email sender for password reset / verification flows.
+ *
+ * Two backends, picked by env at runtime:
+ *
+ * 1. SMTP (preferred, default if SMTP_HOST is set) — uses nodemailer.
+ *    Required env: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+ *    Optional:     SMTP_SECURE ("true"/"false", defaults to true on port 465)
+ *
+ * 2. Resend HTTP API (fallback if RESEND_API_KEY is set and no SMTP).
+ *    Required env: RESEND_API_KEY
+ *    Optional:     RESEND_FROM (default "Simulant <noreply@simulant.dk>")
+ *
+ * If neither is configured, the reset URL is logged to stdout — useful for
+ * local dev where you copy it out of console output.
+ */
+
+import nodemailer from "nodemailer";
+
+const DEFAULT_FROM = "Simulant <noreply@simulant.dk>";
+
+function fromAddress(): string {
+  return (
+    process.env.SMTP_FROM?.trim() ||
+    process.env.RESEND_FROM?.trim() ||
+    DEFAULT_FROM
+  );
+}
 
 export async function sendPasswordReset({
   to,
@@ -10,29 +36,79 @@ export async function sendPasswordReset({
   name: string | null | undefined;
   url: string;
 }): Promise<void> {
-  const key = RESEND_KEY();
-  if (!key) {
-    console.warn("[simulant-auth] RESEND_API_KEY missing — would send reset to", to, "with url", url);
-    return;
-  }
-
   const subject = "Nulstil dit Simulant-kodeord";
   const html = renderResetEmail({ name, url });
 
+  if (process.env.SMTP_HOST) {
+    await sendViaSmtp({ to, subject, html });
+    return;
+  }
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend({ to, subject, html });
+    return;
+  }
+  console.warn(
+    "[simulant-auth] No email backend configured (SMTP_HOST or RESEND_API_KEY). Reset URL:",
+    url,
+  );
+}
+
+async function sendViaSmtp({
+  to,
+  subject,
+  html,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<void> {
+  const port = Number(process.env.SMTP_PORT ?? 465);
+  const secureEnv = process.env.SMTP_SECURE?.toLowerCase();
+  const secure = secureEnv ? secureEnv === "true" : port === 465;
+
+  const transport = nodemailer.createTransport({
+    host: process.env.SMTP_HOST!,
+    port,
+    secure,
+    auth:
+      process.env.SMTP_USER && process.env.SMTP_PASS
+        ? {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          }
+        : undefined,
+  });
+
+  await transport.sendMail({
+    from: fromAddress(),
+    to,
+    subject,
+    html,
+  });
+}
+
+async function sendViaResend({
+  to,
+  subject,
+  html,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<void> {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${key}`,
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: FROM,
+      from: fromAddress(),
       to: [to],
       subject,
       html,
     }),
   });
-
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Resend send failed (${res.status}): ${body}`);
