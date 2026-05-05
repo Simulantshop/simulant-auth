@@ -115,6 +115,33 @@ export async function sendOrgInvitation({
   );
 }
 
+/** Send a passwordless sign-in link. Plugin calls this once per
+ *  signIn.magicLink({ email }) — the URL it provides has the token
+ *  baked in; clicking it consumes the token and creates the session. */
+export async function sendMagicLink({
+  to,
+  url,
+}: {
+  to: string;
+  url: string;
+}): Promise<void> {
+  const subject = "Log ind på Simulant";
+  const html = renderMagicLinkEmail({ url });
+
+  if (process.env.SMTP_HOST) {
+    await sendViaSmtp({ to, subject, html });
+    return;
+  }
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend({ to, subject, html });
+    return;
+  }
+  console.warn(
+    "[simulant-auth] No email backend configured. Magic link URL:",
+    url,
+  );
+}
+
 /** Send a 6-digit email-OTP code. Plugin calls this for sign-in,
  *  email-verification, and forget-password flows; `type` tells us
  *  which copy to render. */
@@ -125,12 +152,13 @@ export async function sendOTPCode({
 }: {
   to: string;
   code: string;
-  type: "sign-in" | "email-verification" | "forget-password";
+  type: "sign-in" | "email-verification" | "forget-password" | "change-email";
 }): Promise<void> {
   const subjectByType: Record<typeof type, string> = {
     "sign-in": "Din Simulant-loginkode",
     "email-verification": "Bekræft din e-mail — Simulant",
     "forget-password": "Nulstil din Simulant-konto",
+    "change-email": "Bekræft din nye e-mail — Simulant",
   };
   const subject = subjectByType[type];
   const html = renderOtpEmail({ code, type });
@@ -292,19 +320,36 @@ function renderOrgInvitationEmail({
 </html>`;
 }
 
+function renderMagicLinkEmail({ url }: { url: string }): string {
+  return `<!doctype html>
+<html lang="da">
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">
+  <h1 style="font-size: 20px; font-weight: 600;">Hej,</h1>
+  <p>Klik på knappen nedenfor for at logge ind på Simulant. Linket virker i 10 minutter og kan kun bruges én gang.</p>
+  <p style="margin: 32px 0;">
+    <a href="${escapeHtml(url)}" style="display: inline-block; padding: 12px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500;">Log ind</a>
+  </p>
+  <p style="font-size: 13px; color: #666;">Hvis du ikke bad om dette, kan du ignorere mailen.</p>
+  <p style="font-size: 13px; color: #666;">— Simulant</p>
+</body>
+</html>`;
+}
+
 function renderOtpEmail({
   code,
   type,
 }: {
   code: string;
-  type: "sign-in" | "email-verification" | "forget-password";
+  type: "sign-in" | "email-verification" | "forget-password" | "change-email";
 }): string {
   const intro =
     type === "sign-in"
       ? "Brug koden nedenfor for at logge ind på Simulant."
       : type === "email-verification"
         ? "Brug koden nedenfor for at bekræfte din e-mailadresse."
-        : "Brug koden nedenfor for at nulstille din Simulant-konto.";
+        : type === "change-email"
+          ? "Brug koden nedenfor for at bekræfte din nye e-mailadresse."
+          : "Brug koden nedenfor for at nulstille din Simulant-konto.";
   return `<!doctype html>
 <html lang="da">
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">

@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { organization, admin, jwt, emailOTP } from "better-auth/plugins";
+import { organization, admin, jwt, emailOTP, magicLink } from "better-auth/plugins";
+import { passkey } from "@better-auth/passkey";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { db } from "./db";
 import {
@@ -127,6 +128,34 @@ export const auth = betterAuth({
       // Don't try to also use this for primary sign-in flow if a
       // password exists — let the user pick. UI surfaces both.
       disableSignUp: true,
+    }),
+    /** Email magic link — passwordless sign-in via a one-shot link.
+     *  Click the link, you're signed in. Uses the existing `verification`
+     *  table for token storage; no new schema needed. */
+    magicLink({
+      sendMagicLink: async ({ email, url }) => {
+        const { sendMagicLink } = await import("./email");
+        await sendMagicLink({ to: email, url });
+      },
+      expiresIn: 10 * 60, // 10 minutes
+      disableSignUp: true,
+    }),
+    /** WebAuthn passkeys (Touch ID, Face ID, hardware keys). The
+     *  `passkey` table in our schema stores credential metadata; the
+     *  plugin handles attestation/assertion ceremonies via the
+     *  webauthn endpoints under /api/auth/passkey/*.
+     *
+     *  rpID = bare host the user sees in the browser prompt.
+     *  rpName = friendly app name shown next to the platform's prompt. */
+    passkey({
+      rpID:
+        process.env.BETTER_AUTH_PASSKEY_RPID ??
+        // Default to the apex so credentials can be re-used across
+        // *.simulant.shop subdomains. WebAuthn matches by RP ID, not
+        // origin — so a passkey registered on console.simulant.shop
+        // can also be used to sign into nordbank.simulant.shop.
+        "simulant.shop",
+      rpName: "Simulant",
     }),
   ],
 });

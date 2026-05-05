@@ -1,5 +1,11 @@
 import { createAuthClient } from "better-auth/react";
-import { organizationClient, adminClient } from "better-auth/client/plugins";
+import {
+  organizationClient,
+  adminClient,
+  emailOTPClient,
+  magicLinkClient,
+} from "better-auth/client/plugins";
+import { passkeyClient } from "@better-auth/passkey/client";
 import {
   ac,
   superadmin,
@@ -22,6 +28,9 @@ export const authClient = createAuthClient({
       roles: { superadmin, workspace_admin, student_manager, student },
     }),
     adminClient(),
+    emailOTPClient(),
+    magicLinkClient(),
+    passkeyClient(),
   ],
 });
 
