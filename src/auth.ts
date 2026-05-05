@@ -12,16 +12,16 @@ import {
 } from "./permissions";
 
 const trustedOrigins = [
-  "https://console.simulant.dk",
-  "https://nordbank.simulant.dk",
-  "https://skat.simulant.dk",
-  "https://expense.simulant.dk",
-  "https://forhandler.simulant.dk",
-  "https://klaviyo.simulant.dk",
-  "https://teachbase.simulant.dk",
-  "https://insights.simulant.dk",
-  "https://shipping.simulant.dk",
-  "https://virk.simulant.dk",
+  "https://console.simulant.shop",
+  "https://nordbank.simulant.shop",
+  "https://skat.simulant.shop",
+  "https://expense.simulant.shop",
+  "https://forhandler.simulant.shop",
+  "https://klaviyo.simulant.shop",
+  "https://teachbase.simulant.shop",
+  "https://insights.simulant.shop",
+  "https://shipping.simulant.shop",
+  "https://virk.simulant.shop",
 ];
 
 export const auth = betterAuth({
@@ -51,7 +51,7 @@ export const auth = betterAuth({
   advanced: {
     crossSubDomainCookies: {
       enabled: true,
-      domain: ".simulant.dk",
+      domain: ".simulant.shop",
     },
     defaultCookieAttributes: {
       sameSite: "lax",

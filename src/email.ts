@@ -9,7 +9,7 @@
  *
  * 2. Resend HTTP API (fallback if RESEND_API_KEY is set and no SMTP).
  *    Required env: RESEND_API_KEY
- *    Optional:     RESEND_FROM (default "Simulant <noreply@simulant.dk>")
+ *    Optional:     RESEND_FROM (default "Simulant <noreply@simulant.shop>")
  *
  * If neither is configured, the reset URL is logged to stdout — useful for
  * local dev where you copy it out of console output.
@@ -17,7 +17,7 @@
 
 import nodemailer from "nodemailer";
 
-const DEFAULT_FROM = "Simulant <noreply@simulant.dk>";
+const DEFAULT_FROM = "Simulant <noreply@simulant.shop>";
 
 function fromAddress(): string {
   return (
