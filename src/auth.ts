@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { organization, admin, jwt } from "better-auth/plugins";
+import { organization, admin, jwt, emailOTP } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { db } from "./db";
 import {
@@ -78,6 +78,30 @@ export const auth = betterAuth({
       consentPage: "/auth/consent",
       // Issuer + endpoints derive from BETTER_AUTH_URL automatically.
       // PrestaShop's stackauthadmin module uses these to validate tokens.
+    }),
+    /**
+     * 6-digit email OTP — alternative sign-in path. The user enters
+     * their email, we send a code, they paste it back. No password
+     * required for the user to remember; same login surface for
+     * student + workspace_admin alike.
+     *
+     * Use cases this unblocks:
+     *   - First-time login for demo signups (no password yet, but
+     *     they have email access)
+     *   - Forgot-password recovery without going through the reset
+     *     flow (faster + no link rot)
+     *   - Students whose schools don't have a password manager
+     */
+    emailOTP({
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        const { sendOTPCode } = await import("./email");
+        await sendOTPCode({ to: email, code: otp, type });
+      },
+      otpLength: 6,
+      expiresIn: 10 * 60, // 10 minutes
+      // Don't try to also use this for primary sign-in flow if a
+      // password exists — let the user pick. UI surfaces both.
+      disableSignUp: true,
     }),
   ],
 });
