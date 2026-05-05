@@ -15,7 +15,11 @@
  * local dev where you copy it out of console output.
  */
 
-import nodemailer from "nodemailer";
+// Note: nodemailer is imported dynamically inside sendViaSmtp() so that
+// consuming apps that bundle this package via Next/Turbopack
+// `transpilePackages` don't have to install nodemailer themselves at
+// build time. The runtime require() still picks up the real module
+// when SMTP_HOST is configured.
 
 const DEFAULT_FROM = "Simulant <noreply@simulant.shop>";
 
@@ -191,6 +195,12 @@ async function sendViaSmtp({
   const port = Number(process.env.SMTP_PORT ?? 465);
   const secureEnv = process.env.SMTP_SECURE?.toLowerCase();
   const secure = secureEnv ? secureEnv === "true" : port === 465;
+
+  // Dynamic import: nodemailer is a CommonJS lib that Next/Turbopack
+  // tries to resolve at build time when this file is transpiled into
+  // the consuming app's bundle. Runtime-only import keeps it out of
+  // the build graph; it's only require()d when SMTP_HOST is set.
+  const { default: nodemailer } = await import("nodemailer");
 
   const transport = nodemailer.createTransport({
     host: process.env.SMTP_HOST!,
