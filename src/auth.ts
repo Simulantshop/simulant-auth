@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { organization, admin } from "better-auth/plugins";
+import { organization, admin, jwt } from "better-auth/plugins";
+import { oauthProvider } from "@better-auth/oauth-provider";
 import { db } from "./db";
 import {
   ac,
@@ -25,6 +26,11 @@ const trustedOrigins = [
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "sqlite" }),
+
+  // OIDC provider plugin needs /token disabled in favor of /oauth2/token
+  // (see better-auth oidc-provider docs). PrestaShop module fetches
+  // tokens from /api/auth/oauth2/token after this swap.
+  disabledPaths: ["/token"],
 
   secret: process.env.BETTER_AUTH_SECRET!,
   baseURL: process.env.BETTER_AUTH_URL!,
@@ -64,6 +70,13 @@ export const auth = betterAuth({
     admin({
       defaultRole: "user",
       adminRoles: ["admin"],
+    }),
+    jwt(),
+    oauthProvider({
+      loginPage: "/auth/sign-in",
+      consentPage: "/auth/consent",
+      // Issuer + endpoints derive from BETTER_AUTH_URL automatically.
+      // PrestaShop's stackauthadmin module uses these to validate tokens.
     }),
   ],
 });

@@ -24,6 +24,7 @@
     "drizzle-orm": "^0.45.2"
   },
   "dependencies": {
+    "@better-auth/oauth-provider": "^1.6.9",
     "dotenv": "^17.4.2",
     "nodemailer": "^8.0.7"
   },
