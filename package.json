@@ -32,7 +32,6 @@
   "devDependencies": {
     "@better-auth/cli": "^1.4.22",
     "@libsql/client": "^0.14.0",
-    "@stackframe/stack": "^2.8.85",
     "@types/nodemailer": "^8.0.0",
     "better-auth": "^1.6.0",
     "drizzle-kit": "^0.31.4",

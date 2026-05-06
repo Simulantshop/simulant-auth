@@ -1,67 +1,58 @@
-# Stack Auth → Better-Auth Migration Scripts
+# Migration scripts
 
-## Order of operations on cutover day
+The Stack Auth → Better-Auth migration is **complete**. The export-from-Stack
+script has been removed; what remains is the import-to-Better-Auth tooling,
+which is still useful for re-importing from any source that produces a
+compatible `stack-export.json` (the format is plain JSON — schema in
+`import-to-better-auth.ts`).
 
-1. **T−15 min** — put all Simulant apps into maintenance mode (Coolify env flag)
-2. **T−10 min** — stop background jobs that hit Stack Auth
-3. **T+0** — run `tsx scripts/migration/export-from-stack.ts`
-4. **T+5 min** — verify `stack-export.json` counts match an audit snapshot
-5. **T+10 min** — run `tsx scripts/migration/import-to-better-auth.ts`
-6. **T+15 min** — swap Coolify env vars on every app (remove STACK_*, add SIMULANT_AUTH_*)
-7. **T+20 min** — redeploy all apps in parallel
-8. **T+25 min** — lift maintenance mode
-9. **T+30 min** — send password-reset blast email to all users
+## Files
+
+- `import-to-better-auth.ts` — reads `stack-export.json`, inserts users +
+  organizations + memberships into the auth DB. Idempotent on `id`. Users
+  arrive with `password = NULL` so they go through the forgot-password
+  flow on first sign-in.
+- `dedupe-export.cjs` — collapses duplicate-email users in
+  `stack-export.json` (keep earliest signup with name, drop the rest).
+  Run before `import-to-better-auth.ts` if Better-Auth's unique-email
+  constraint barks at the data.
+- `truncate-and-import.cjs` — wipes auth tables then runs the importer.
+  Use for a fresh re-import only — destructive.
 
 ## Required env
 
 Put in `simulant-auth/.env.local`:
 
 ```bash
-# For export-from-stack.ts (read prod Stack)
-NEXT_PUBLIC_STACK_PROJECT_ID=<from app.stack-auth.com>
-NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<from app.stack-auth.com>
-STACK_SECRET_SERVER_KEY=<from app.stack-auth.com>
-
-# For import-to-better-auth.ts (write to your DB)
 SIMULANT_AUTH_DB_URL=libsql://simulant-auth-db.database.bullma.de
-SIMULANT_AUTH_DB_TOKEN=<rotated token>
+SIMULANT_AUTH_DB_TOKEN=<token>
 ```
 
-## Behavior
+## Running
 
-- **Users** are imported with `password = null`. Every user must reset their
-  password on first login post-cutover. Better-Auth's "Forgot password" flow
-  works seamlessly — they enter their email, get a reset link, set a new
-  password.
-- **Organizations** are imported preserving Stack's UUIDs. Every consuming app
-  has join columns like `companies.stack_team_id` that already hold these
-  IDs — they continue to work without renaming.
-- **Memberships** are imported with the snake_case role from Stack's
-  `user.teamRoles[teamId]` map: `superadmin` / `workspace_admin` /
-  `student_manager` / `student`.
-- Both scripts are **idempotent** — re-running them only inserts new rows
-  (`ON CONFLICT DO NOTHING` semantics via existence checks).
+```bash
+node scripts/migration/dedupe-export.cjs
+npx tsx scripts/migration/import-to-better-auth.ts
+```
 
-## After cutover
+`stack-export.json` is gitignored — it contains user PII (emails, names).
+Delete it once import is complete and verified.
 
-1. Verify counts: open Better-Auth admin dashboard in console → user count
-   should match the export snapshot.
-2. Reset-blast email: send via console's email infrastructure — every user
-   gets one click "set new password" link.
-3. Day 7: send a reminder to anyone who hasn't reset.
-4. Day 30: delete `stack-export.json` (contains PII), close the Stack Auth
-   project, remove `@stackframe/stack` devDep from this package.
+## Verification
 
-## Files NOT migrated by these scripts
+```bash
+node scripts/verify-mirror.cjs
+```
 
-These need separate handling:
+Compares `stack-export.json` to the live DB and reports missing/extra
+users, organizations, and memberships.
 
-- `team_entitlements` (in console's local DB) — already populated, not in
-  Stack metadata anymore. No migration needed if you've been writing to it
-  alongside Stack metadata. Otherwise: backfill from team metadata before
-  cutover.
-- Active sessions — cannot be migrated. All users get logged out at cutover.
-  This is unavoidable with any auth migration.
-- OAuth account links (Google sign-in linkages) — only matters if any users
-  used OAuth providers. The export script captures `oauthProviders` per
-  user but the import script doesn't write them. Add a step here if needed.
+## Post-migration
+
+The Stack Auth project can be retired once:
+1. Every user has reset their password (sent via login.simulant.shop's
+   forgot-password flow).
+2. All Coolify apps are pointing at login.simulant.shop / Better-Auth
+   (env vars updated, deployments fresh).
+3. PrestaShop SSO module is rewired (see `simulant-prestaauth/MIGRATION-TO-BETTER-AUTH.md`)
+   or accepted as out-of-scope.
