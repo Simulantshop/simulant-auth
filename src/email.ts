@@ -200,9 +200,14 @@ async function sendViaSmtp({
   // tries to resolve at build time when this file is transpiled into
   // the consuming app's bundle. Runtime-only import keeps it out of
   // the build graph; it's only require()d when SMTP_HOST is set.
-  const { default: nodemailer } = await import("nodemailer");
+  // The cast dodges "Could not find a declaration file" errors in
+  // consuming apps that don't ship @types/nodemailer (it's only a
+  // devDep here, not a transitive dep of the github: install).
+  const nm: { createTransport: (opts: unknown) => {
+    sendMail: (msg: unknown) => Promise<unknown>;
+  } } = (await import("nodemailer" as string)).default;
 
-  const transport = nodemailer.createTransport({
+  const transport = nm.createTransport({
     host: process.env.SMTP_HOST!,
     port,
     secure,
