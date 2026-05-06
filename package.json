@@ -19,7 +19,7 @@
     "drizzle:push": "drizzle-kit push"
   },
   "peerDependencies": {
-    "@libsql/client": "^0.14.0",
+    "@libsql/client": ">=0.14.0 <1",
     "better-auth": "^1.6.0",
     "drizzle-orm": "^0.45.2"
   },
