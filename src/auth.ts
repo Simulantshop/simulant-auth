@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization, admin, jwt, emailOTP, magicLink } from "better-auth/plugins";
+import { createAuthMiddleware } from "better-auth/api";
 import { passkey } from "@better-auth/passkey";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { db } from "./db";
@@ -11,6 +12,7 @@ import {
   student_manager,
   student,
 } from "./permissions";
+import { recordAuthEvent, mapEndpointToEvent, extractIp } from "./audit";
 
 const trustedOrigins = [
   "https://console.simulant.shop",
@@ -59,6 +61,70 @@ export const auth = betterAuth({
   },
 
   trustedOrigins,
+
+  /**
+   * App-layer rate limiting (defends the auth API against credential
+   * stuffing + reset-email DoS). Cloudflare or another edge WAF should
+   * sit in front of this for real DDoS protection — but these limits
+   * trip even when the edge is bypassed (e.g. internal traffic).
+   */
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 30,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 5 },
+      "/sign-up/email": { window: 60 * 60, max: 3 },
+      "/forget-password": { window: 60 * 60, max: 3 },
+      "/sign-in/magic-link": { window: 60 * 60, max: 5 },
+      "/email-otp/send-verification-otp": { window: 60 * 60, max: 5 },
+      "/two-factor/verify": { window: 60, max: 5 },
+    },
+  },
+
+  /**
+   * Audit logging — every interesting auth endpoint emits a row in the
+   * auth_event table. Console's /audit page reads from this table and
+   * console's own consoleAudit table, merged into one timeline.
+   *
+   * Failures are swallowed inside recordAuthEvent so a logging hiccup
+   * never breaks the underlying auth flow.
+   */
+  hooks: {
+    after: createAuthMiddleware(async (ctx) => {
+      const status = ctx.context.returned instanceof Response
+        ? ctx.context.returned.status
+        : 200;
+      const event = mapEndpointToEvent(ctx.path, status);
+      if (!event) return;
+
+      const headerList = ctx.headers ?? new Headers();
+      const session = ctx.context.session ?? null;
+      const body = (ctx.body ?? {}) as Record<string, unknown>;
+
+      await recordAuthEvent({
+        action: event.action,
+        outcome: event.outcome,
+        userId: session?.user?.id ?? (typeof body.userId === "string" ? body.userId : null),
+        userEmail: session?.user?.email ?? (typeof body.email === "string" ? body.email : null),
+        organizationId:
+          (typeof body.organizationId === "string" ? body.organizationId : null) ??
+          session?.session?.activeOrganizationId ??
+          null,
+        actorUserId: session?.user?.id ?? null,
+        actorEmail: session?.user?.email ?? null,
+        endpoint: ctx.path,
+        ipAddress: extractIp(headerList),
+        userAgent: headerList.get("user-agent"),
+        metadata: {
+          status,
+          // Drop sensitive fields from the body before logging.
+          ...(typeof body.role === "string" ? { role: body.role } : {}),
+          ...(typeof body.banReason === "string" ? { banReason: body.banReason } : {}),
+        },
+      });
+    }),
+  },
 
   advanced: {
     crossSubDomainCookies: {

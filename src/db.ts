@@ -1,6 +1,7 @@
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
-import * as schema from "./schema";
+import * as betterAuthSchema from "./schema";
+import * as auditSchema from "./audit-schema";
 
 /**
  * Lazy DB initializer. The env check is deferred to first use so that
@@ -9,9 +10,11 @@ import * as schema from "./schema";
  * at build time. The env var is required at runtime and validated then.
  */
 
-let cachedDb: LibSQLDatabase<typeof schema> | null = null;
+const fullSchema = { ...betterAuthSchema, ...auditSchema };
 
-function buildDb(): LibSQLDatabase<typeof schema> {
+let cachedDb: LibSQLDatabase<typeof fullSchema> | null = null;
+
+function buildDb(): LibSQLDatabase<typeof fullSchema> {
   const url = process.env.SIMULANT_AUTH_DB_URL;
   const authToken = process.env.SIMULANT_AUTH_DB_TOKEN;
   if (!url) {
@@ -20,7 +23,7 @@ function buildDb(): LibSQLDatabase<typeof schema> {
     );
   }
   const client = createClient({ url, authToken });
-  return drizzle(client, { schema });
+  return drizzle(client, { schema: fullSchema });
 }
 
 /**
@@ -28,7 +31,7 @@ function buildDb(): LibSQLDatabase<typeof schema> {
  * first access — never throws at import-time, only when an actual query
  * is dispatched.
  */
-export const db = new Proxy({} as LibSQLDatabase<typeof schema>, {
+export const db = new Proxy({} as LibSQLDatabase<typeof fullSchema>, {
   get(_target, prop, receiver) {
     if (!cachedDb) {
       cachedDb = buildDb();
@@ -36,6 +39,6 @@ export const db = new Proxy({} as LibSQLDatabase<typeof schema>, {
     const value = Reflect.get(cachedDb, prop, receiver);
     return typeof value === "function" ? value.bind(cachedDb) : value;
   },
-}) as LibSQLDatabase<typeof schema>;
+}) as LibSQLDatabase<typeof fullSchema>;
 
-export { schema };
+export const schema = fullSchema;

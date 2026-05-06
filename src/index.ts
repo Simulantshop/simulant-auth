@@ -1,6 +1,9 @@
 export { auth } from "./auth";
 export type { Auth, Session } from "./auth";
 export { db, schema } from "./db";
+export { authEvent } from "./audit-schema";
+export type { AuthEvent, NewAuthEvent } from "./audit-schema";
+export { recordAuthEvent } from "./audit";
 export {
   ac,
   superadmin,
