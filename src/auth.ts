@@ -15,16 +15,28 @@ import {
 import { recordAuthEvent, mapEndpointToEvent, extractIp } from "./audit";
 
 const trustedOrigins = [
+  "https://simulant.shop",
   "https://console.simulant.shop",
+  "https://login.simulant.shop",
   "https://nordbank.simulant.shop",
   "https://skat.simulant.shop",
   "https://expense.simulant.shop",
-  "https://forhandler.simulant.shop",
   "https://klaviyo.simulant.shop",
   "https://teachbase.simulant.shop",
   "https://insights.simulant.shop",
   "https://shipping.simulant.shop",
   "https://virk.simulant.shop",
+  "https://simdesk.simulant.shop",
+  "https://salary.simulant.shop",
+  "https://nemrefusion.simulant.shop",
+  "https://simsign.simulant.shop",
+  "https://contracts.simulant.shop",
+  "https://forsikring.simulant.shop",
+  "https://efforsikring.simulant.shop",
+  "https://manual.simulant.shop",
+  "https://task.simulant.shop",
+  "https://tasks.simulant.shop",
+  "https://admin.forhandler.shop",
 ];
 
 export const auth = betterAuth({
