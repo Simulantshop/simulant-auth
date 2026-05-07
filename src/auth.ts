@@ -76,6 +76,12 @@ export const auth = betterAuth({
       "/sign-in/email": { window: 60, max: 5 },
       "/sign-up/email": { window: 60 * 60, max: 3 },
       "/forget-password": { window: 60 * 60, max: 3 },
+      // Better-Auth 1.6+ renamed forget-password → request-password-reset
+      // for the actual endpoint. Without a custom rule here it falls
+      // through to the global 30/min, which lets a double-clicked submit
+      // (or a Next.js prefetch + submit pair) send TWO reset emails in
+      // quick succession. Tighten to 1 per minute so dupes drop.
+      "/request-password-reset": { window: 60, max: 1 },
       "/sign-in/magic-link": { window: 60 * 60, max: 5 },
       "/email-otp/send-verification-otp": { window: 60 * 60, max: 5 },
       "/two-factor/verify": { window: 60, max: 5 },
