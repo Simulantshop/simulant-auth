@@ -119,6 +119,41 @@ export async function sendOrgInvitation({
   );
 }
 
+/** Sent when an existing user is added directly to an org (no invitation
+ *  acceptance required) — the recipient already has an account and is
+ *  already a member as soon as this fires. Different copy from
+ *  `sendOrgInvitation` because there's nothing to "accept"; the link
+ *  just sends them to the workspace. */
+export async function sendMemberAdded({
+  to,
+  adderName,
+  orgName,
+  role,
+  url,
+}: {
+  to: string;
+  adderName: string | null | undefined;
+  orgName: string;
+  role: string;
+  url: string;
+}): Promise<void> {
+  const subject = `Du er tilføjet til ${orgName} på Simulant`;
+  const html = renderMemberAddedEmail({ adderName, orgName, role, url });
+
+  if (process.env.SMTP_HOST) {
+    await sendViaSmtp({ to, subject, html });
+    return;
+  }
+  if (process.env.RESEND_API_KEY) {
+    await sendViaResend({ to, subject, html });
+    return;
+  }
+  console.warn(
+    "[simulant-auth] No email backend configured. Member-added URL:",
+    url,
+  );
+}
+
 /** Send a passwordless sign-in link. Plugin calls this once per
  *  signIn.magicLink({ email }) — the URL it provides has the token
  *  baked in; clicking it consumes the token and creates the session. */
@@ -330,6 +365,39 @@ function renderOrgInvitationEmail({
     <a href="${escapeHtml(url)}" style="display: inline-block; padding: 12px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500;">Accepter invitation</a>
   </p>
   <p style="font-size: 13px; color: #666;">Hvis du ikke kender afsenderen, kan du ignorere mailen.</p>
+  <p style="font-size: 13px; color: #666;">— Simulant</p>
+</body>
+</html>`;
+}
+
+function renderMemberAddedEmail({
+  adderName,
+  orgName,
+  role,
+  url,
+}: {
+  adderName: string | null | undefined;
+  orgName: string;
+  role: string;
+  url: string;
+}): string {
+  const roleLabels: Record<string, string> = {
+    superadmin: "superadmin",
+    workspace_admin: "lærer / workspace-admin",
+    student_manager: "lærer-assistent",
+    student: "elev",
+  };
+  const roleLabel = roleLabels[role] ?? role;
+  const adder = adderName ? escapeHtml(adderName) : "En kollega";
+  return `<!doctype html>
+<html lang="da">
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">
+  <h1 style="font-size: 20px; font-weight: 600;">Du er tilføjet til ${escapeHtml(orgName)}</h1>
+  <p>${adder} har tilføjet dig til <strong>${escapeHtml(orgName)}</strong> på Simulant som <strong>${escapeHtml(roleLabel)}</strong>. Du har adgang med det samme — der er intet at acceptere.</p>
+  <p style="margin: 32px 0;">
+    <a href="${escapeHtml(url)}" style="display: inline-block; padding: 12px 20px; background: #111; color: #fff; text-decoration: none; border-radius: 6px; font-weight: 500;">Gå til Simulant</a>
+  </p>
+  <p style="font-size: 13px; color: #666;">Hvis du ikke kender afsenderen, kan du ignorere mailen eller kontakte support.</p>
   <p style="font-size: 13px; color: #666;">— Simulant</p>
 </body>
 </html>`;

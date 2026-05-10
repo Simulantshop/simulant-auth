@@ -6,6 +6,7 @@ export type { AuthEvent, NewAuthEvent } from "./audit-schema";
 export { recordAuthEvent } from "./audit";
 export {
   sendOrgInvitation,
+  sendMemberAdded,
   sendMagicLink,
   sendOTPCode,
   sendPasswordReset,
