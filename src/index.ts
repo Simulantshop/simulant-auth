@@ -5,6 +5,13 @@ export { authEvent } from "./audit-schema";
 export type { AuthEvent, NewAuthEvent } from "./audit-schema";
 export { recordAuthEvent } from "./audit";
 export {
+  sendOrgInvitation,
+  sendMagicLink,
+  sendOTPCode,
+  sendPasswordReset,
+  sendVerificationEmail,
+} from "./email";
+export {
   ac,
   superadmin,
   workspace_admin,
