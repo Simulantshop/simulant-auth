@@ -22,6 +22,16 @@ function buildDb(): LibSQLDatabase<typeof fullSchema> {
       "SIMULANT_AUTH_DB_URL is not set. Set it in your env (Coolify build/runtime secrets) before serving requests.",
     );
   }
+  // Fail loud on a missing token. Without this guard the libsql client
+  // is happy to send requests with no Authorization header, which sqld
+  // 401s for free in CPU terms BUT floods its log and masks the real
+  // source of the misconfig. We'd rather the misbehaving deploy refuse
+  // to serve traffic so the operator notices immediately.
+  if (!authToken) {
+    throw new Error(
+      "SIMULANT_AUTH_DB_TOKEN is not set. The libsql client would otherwise send unauthenticated requests and 401-storm sqld.",
+    );
+  }
   const client = createClient({ url, authToken });
   return drizzle(client, { schema: fullSchema });
 }
