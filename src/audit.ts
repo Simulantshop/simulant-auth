@@ -12,6 +12,7 @@
 import { lt } from "drizzle-orm";
 import { db } from "./db";
 import { authEvent, type NewAuthEvent } from "./audit-schema";
+import { session } from "./schema";
 
 export type AuditOutcome = "success" | "fail" | "info";
 
@@ -143,6 +144,20 @@ export async function pruneAuthEvents(
   const days = opts.olderThanDays ?? 90;
   const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   await db.delete(authEvent).where(lt(authEvent.createdAt, cutoff));
+  return { cutoff };
+}
+
+/**
+ * Delete session rows whose `expiresAt` is in the past. Better-Auth
+ * never garbage-collects expired session rows on its own, so without
+ * this they accumulate forever — and per-user queries that fetch
+ * "recent sessions" end up scanning hundreds of dead rows per user.
+ *
+ * Should run on the same cron as pruneAuthEvents (e.g. daily).
+ */
+export async function pruneExpiredSessions(): Promise<{ cutoff: Date }> {
+  const cutoff = new Date();
+  await db.delete(session).where(lt(session.expiresAt, cutoff));
   return { cutoff };
 }
 
