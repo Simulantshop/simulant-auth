@@ -122,8 +122,11 @@ export const auth = betterAuth({
    * auth_event table. Console's /audit page reads from this table and
    * console's own consoleAudit table, merged into one timeline.
    *
-   * Failures are swallowed inside recordAuthEvent so a logging hiccup
-   * never breaks the underlying auth flow.
+   * The insert is intentionally NOT awaited. Auditing is observational
+   * — the user's response shouldn't wait on a libsql round-trip to log
+   * what just happened. recordAuthEvent already swallows its own
+   * errors; the outer .catch here is belt-and-suspenders for anything
+   * synchronous that escapes the inner try/catch.
    */
   hooks: {
     after: createAuthMiddleware(async (ctx) => {
@@ -137,7 +140,7 @@ export const auth = betterAuth({
       const session = ctx.context.session ?? null;
       const body = (ctx.body ?? {}) as Record<string, unknown>;
 
-      await recordAuthEvent({
+      void recordAuthEvent({
         action: event.action,
         outcome: event.outcome,
         userId: session?.user?.id ?? (typeof body.userId === "string" ? body.userId : null),
@@ -157,6 +160,8 @@ export const auth = betterAuth({
           ...(typeof body.role === "string" ? { role: body.role } : {}),
           ...(typeof body.banReason === "string" ? { banReason: body.banReason } : {}),
         },
+      }).catch((err) => {
+        console.error("[audit] unhandled error in recordAuthEvent:", err);
       });
     }),
   },
