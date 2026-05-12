@@ -89,6 +89,16 @@ export const auth = betterAuth({
       enabled: true,
       maxAge: 5 * 60,
     },
+    /**
+     * Don't roll session expiry forward on use. Default behaviour is
+     * to UPDATE the session row every `updateAge` (1 day) so the
+     * session slides forward; libsql's slow-query log showed those
+     * UPDATEs running 2–5 s each across the fleet. With this flag
+     * sessions expire at the fixed `expiresIn` from sign-in (7 days
+     * by default), and re-auth is cheap given we have passkeys +
+     * magic-link + email-OTP wired up. Removes the write entirely.
+     */
+    disableSessionRefresh: true,
   },
 
   /**
