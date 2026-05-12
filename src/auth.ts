@@ -75,6 +75,23 @@ export const auth = betterAuth({
   trustedOrigins,
 
   /**
+   * Session cookie cache. Without this, every consumer app's
+   * `auth.api.getSession()` (called per server-rendered request across
+   * 22 trusted origins) hits the libsql DB for a SELECT on `session`
+   * + `user`. With cookieCache on, Better-Auth signs the resolved
+   * session into the cookie for `maxAge` seconds and reads it back
+   * from there — no DB round-trip until the cookie expires. 5 min is
+   * short enough that role/ban changes propagate quickly, long enough
+   * to absorb normal navigation bursts.
+   */
+  session: {
+    cookieCache: {
+      enabled: true,
+      maxAge: 5 * 60,
+    },
+  },
+
+  /**
    * App-layer rate limiting (defends the auth API against credential
    * stuffing + reset-email DoS). Cloudflare or another edge WAF should
    * sit in front of this for real DDoS protection — but these limits
