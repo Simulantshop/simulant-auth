@@ -48,7 +48,20 @@ export const session = sqliteTable(
     activeOrganizationId: text("active_organization_id"),
     impersonatedBy: text("impersonated_by"),
   },
-  (table) => [index("session_userId_idx").on(table.userId)],
+  (table) => [
+    index("session_userId_idx").on(table.userId),
+    // Compound (userId, createdAt) — Better-Auth and various consumer
+    // queries fetch a user's sessions ordered by createdAt desc and
+    // LIMIT to the most recent. Without this index, sqlite picks the
+    // userId-only index and then has to load every matching row to
+    // sort. With a single user accumulating 200+ session rows over
+    // time (sign-ins across 22 subdomains × devices), that became
+    // the top "rows read" offender in the libsql query log.
+    index("session_userId_createdAt_idx").on(table.userId, table.createdAt),
+    // Lets the periodic pruneExpiredSessions() job seek to expired
+    // rows directly instead of scanning the whole table.
+    index("session_expiresAt_idx").on(table.expiresAt),
+  ],
 );
 
 export const account = sqliteTable(
