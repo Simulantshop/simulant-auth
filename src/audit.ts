@@ -9,6 +9,7 @@
  * consoleAudit table and merges them into one timeline.
  */
 
+import { lt } from "drizzle-orm";
 import { db } from "./db";
 import { authEvent, type NewAuthEvent } from "./audit-schema";
 
@@ -121,6 +122,28 @@ export function mapEndpointToEvent(
   const action = map[path];
   if (!action) return null;
   return { action, outcome };
+}
+
+/**
+ * Delete auth_event rows older than `olderThanDays`. Returns the cutoff
+ * timestamp that was used so callers can log it.
+ *
+ * Intended to run as a periodic job (daily cron in Console or wherever
+ * the operator owns scheduled tasks). The table grows unboundedly
+ * otherwise — sign-ins alone produce one row per attempt — and the
+ * indexes on action/userId/orgId/createdAt slow proportionally.
+ *
+ * libsql doesn't need DELETE batching for a table this size; a single
+ * statement is fine. If retention ever needs to be tighter (hours not
+ * days), revisit.
+ */
+export async function pruneAuthEvents(
+  opts: { olderThanDays?: number } = {},
+): Promise<{ cutoff: Date }> {
+  const days = opts.olderThanDays ?? 90;
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  await db.delete(authEvent).where(lt(authEvent.createdAt, cutoff));
+  return { cutoff };
 }
 
 export function extractIp(headers: Headers): string | null {
