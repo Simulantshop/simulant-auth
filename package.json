@@ -16,7 +16,9 @@
   "scripts": {
     "generate-schema": "better-auth generate --config ./src/auth.ts --output ./src/schema.ts",
     "drizzle:generate": "drizzle-kit generate",
-    "drizzle:push": "drizzle-kit push"
+    "drizzle:push": "drizzle-kit push",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "bun run scripts/migrate.ts"
   },
   "peerDependencies": {
     "@libsql/client": ">=0.14.0 <1",
