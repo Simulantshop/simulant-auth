@@ -220,6 +220,12 @@ export const auth = betterAuth({
       consentPage: "/auth/consent",
       // Issuer + endpoints derive from BETTER_AUTH_URL automatically.
       // PrestaShop's stackauthadmin module uses these to validate tokens.
+      // The discovery endpoint /.well-known/oauth-authorization-server
+      // is registered by the plugin itself (see oauth-provider's
+      // index.mjs:2812), so the "please ensure it exists" warning is
+      // noise — it fires on every consumer that imports `auth`,
+      // including apps that aren't the issuer (e.g. simulant-console).
+      silenceWarnings: { oauthAuthServerConfig: true },
     }),
     /**
      * 6-digit email OTP — alternative sign-in path. The user enters
