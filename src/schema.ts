@@ -167,6 +167,18 @@ export const member = sqliteTable(
   (table) => [
     index("member_organizationId_idx").on(table.organizationId),
     index("member_userId_idx").on(table.userId),
+    // Compound (userId, organizationId). The organization plugin's
+    // permission checks + getActiveMember run
+    //   SELECT role FROM member WHERE user_id = ? AND organization_id = ?
+    // on essentially every org-scoped request. The two single-column
+    // indexes above force sqlite to pick one and filter the rest; this
+    // compound turns it into a direct seek. (A user has at most one
+    // membership row per org, so this could be uniqueIndex — kept
+    // non-unique to avoid a migration failure on any pre-existing dupes.)
+    index("member_userId_organizationId_idx").on(
+      table.userId,
+      table.organizationId,
+    ),
   ],
 );
 

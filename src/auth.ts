@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization, admin, jwt, emailOTP, magicLink } from "better-auth/plugins";
+import type { Jwk } from "better-auth/plugins";
 import { createAuthMiddleware } from "better-auth/api";
 import { passkey } from "@better-auth/passkey";
 import { oauthProvider } from "@better-auth/oauth-provider";
@@ -38,6 +39,21 @@ const trustedOrigins = [
   "https://tasks.simulant.shop",
   "https://admin.forhandler.shop",
 ];
+
+/**
+ * In-memory JWKS cache. See the jwt() plugin config below for the full
+ * incident write-up. Short version: the jwt plugin re-SELECTs the entire
+ * `jwks` table on every sign/verify, and the signing key(s) are
+ * effectively static (Better-Auth only writes here on first boot or a
+ * manual rotation). So read the table once and serve everything else
+ * from memory.
+ *
+ * Guard: never cache an empty result. On a fresh DB the key row is
+ * created moments after the first read, and a cached `[]` would wedge
+ * token signing for the whole TTL.
+ */
+let jwksCache: { rows: Jwk[]; at: number } | null = null;
+const JWKS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min — long enough to kill the flood, short enough that a manual key rotation propagates fast.
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "sqlite" }),
@@ -214,7 +230,54 @@ export const auth = betterAuth({
       defaultRole: "user",
       adminRoles: ["admin"],
     }),
-    jwt(),
+    /**
+     * JWT plugin — issues the signing key used by the OIDC/OAuth token
+     * endpoint and publishes the public JWKS at /api/auth/jwks.
+     *
+     * ⚠️ CPU INCIDENT FIX (2026-06). Two settings here, both load-shedding:
+     *
+     * 1. `disableSettingJwtHeader: true`
+     *    By default this plugin runs an `after` hook on EVERY /get-session
+     *    call that signs a fresh JWT and attaches it as a `set-auth-jwt`
+     *    response header. Signing re-reads the whole `jwks` table from
+     *    libsql each time. Across 22 server-rendered consumer apps calling
+     *    getSession per request, that single
+     *      select ... from "jwks" limit ?
+     *    became ~all of libsql's query volume (~1.5M queries), pinning CPU
+     *    >500% and triggering a healthcheck-timeout → SIGTERM → restart
+     *    spiral. cookieCache does NOT save us here — it resolves the
+     *    session from the cookie, but this after-hook still fires and
+     *    still reads jwks.
+     *
+     *    We do not consume `set-auth-jwt` anywhere: downstream services
+     *    authenticate through the OIDC/OAuth token endpoint (oauthProvider
+     *    below), not this header. If a consumer ever needs a session-bound
+     *    JWT, it can call POST /api/auth/token explicitly. So turning the
+     *    header off is free here — BUT if any consumer app reads
+     *    `set-auth-jwt`, re-enable this and rely on the cache below alone.
+     *
+     * 2. `adapter.getJwks` → getCachedJwks
+     *    Belt-and-suspenders: even the remaining, legitimate JWKS reads
+     *    (the public /jwks endpoint that consumers hit to verify tokens,
+     *    and OAuth token signing) are served from a 10-minute in-memory
+     *    cache instead of round-tripping libsql every time.
+     */
+    jwt({
+      disableSettingJwtHeader: true,
+      adapter: {
+        getJwks: async (ctx) => {
+          const now = Date.now();
+          if (jwksCache && now - jwksCache.at < JWKS_CACHE_TTL_MS) {
+            return jwksCache.rows;
+          }
+          const rows = (await ctx.context.adapter.findMany({
+            model: "jwks",
+          })) as Jwk[];
+          if (rows.length > 0) jwksCache = { rows, at: now };
+          return rows;
+        },
+      },
+    }),
     oauthProvider({
       loginPage: "/auth/sign-in",
       consentPage: "/auth/consent",

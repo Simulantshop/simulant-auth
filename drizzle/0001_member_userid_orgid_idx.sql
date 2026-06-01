@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS `member_userId_organizationId_idx` ON `member` (`user_id`,`organization_id`);
