@@ -128,6 +128,11 @@ function generateRandomString(length) {
   //   token_endpoint_auth_method = "client_secret_basic"
   //   scopes = ["openid", "email", "profile"]
   //   require_pkce = 1
+  //   skip_consent = 1 — every PS shop is a first-party trusted client of
+  //     our own IdP, so the consent screen adds friction without signal
+  //     (mirrors the console's registerOAuthClient skipConsent:true). It
+  //     also sidesteps the simulant-login consent page rendering the login
+  //     form instead of an Authorize button for an already-signed-in user.
   // Booleans are stored as 0/1 in libsql; JSON columns as text.
   await client.execute({
     sql: `INSERT INTO oauth_client (
@@ -143,10 +148,10 @@ function generateRandomString(length) {
       id,
       clientId,
       storedSecret,
-      0,
-      0,
-      0,
-      1,
+      0, // disabled
+      1, // skip_consent — first-party trusted client, bypass consent screen
+      0, // public
+      1, // require_pkce
       JSON.stringify(["openid", "email", "profile"]),
       JSON.stringify(args.redirects),
       JSON.stringify(["authorization_code"]),
