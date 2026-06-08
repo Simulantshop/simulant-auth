@@ -5,7 +5,9 @@ import type { Jwk } from "better-auth/plugins";
 import { createAuthMiddleware } from "better-auth/api";
 import { passkey } from "@better-auth/passkey";
 import { oauthProvider } from "@better-auth/oauth-provider";
+import { eq, and } from "drizzle-orm";
 import { db } from "./db";
+import { member } from "./schema";
 import {
   ac,
   superadmin,
@@ -281,6 +283,33 @@ export const auth = betterAuth({
     oauthProvider({
       loginPage: "/auth/sign-in",
       consentPage: "/auth/consent",
+      // Attach the user's membership role (for the school that owns this
+      // OAuth client) to the id_token as `simulant_role`. The PrestaShop
+      // bm_simulant_betterauth module reads it to map console roles →ish PS
+      // employee profiles (e.g. student → restricted profile, everyone else
+      // → SuperAdmin). The owning org is carried on the client metadata as
+      // `organizationId` (set by the console when it provisions the client).
+      // No org on the client, or the user isn't a member → no claim, and the
+      // module falls back to its non-role default behaviour.
+      customIdTokenClaims: async ({ user, metadata }) => {
+        const orgId =
+          metadata && typeof metadata.organizationId === "string"
+            ? metadata.organizationId
+            : null;
+        if (!orgId || !user?.id) return {};
+        try {
+          const [m] = await db
+            .select({ role: member.role })
+            .from(member)
+            .where(
+              and(eq(member.userId, user.id), eq(member.organizationId, orgId)),
+            )
+            .limit(1);
+          return m?.role ? { simulant_role: m.role } : {};
+        } catch {
+          return {};
+        }
+      },
       // Issuer + endpoints derive from BETTER_AUTH_URL automatically.
       // PrestaShop's stackauthadmin module uses these to validate tokens.
       // The discovery endpoint /.well-known/oauth-authorization-server
