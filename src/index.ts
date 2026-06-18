@@ -1,4 +1,4 @@
-export { auth } from "./auth";
+export { auth, trustedOrigins } from "./auth";
 export type { Auth, Session } from "./auth";
 export { db, schema } from "./db";
 export { authEvent } from "./audit-schema";

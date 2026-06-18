@@ -17,7 +17,18 @@ import {
 } from "./permissions";
 import { recordAuthEvent, mapEndpointToEvent, extractIp } from "./audit";
 
-const trustedOrigins = [
+/**
+ * Single source of truth for which origins the auth host trusts.
+ *
+ * Better-Auth consumes this as its `trustedOrigins` for CSRF/origin
+ * validation. It is ALSO the allowlist that the login app's
+ * /api/auth/[...all] route reflects into `Access-Control-Allow-Origin`
+ * for cross-origin browser fetches (get-session, organization/list,
+ * …) and that simulant-console's stack.json route reflects for the
+ * app-rail sidebar. Exported so those CORS allowlists cannot drift
+ * from this list. Add a new subdomain here ONCE and all three honour it.
+ */
+export const trustedOrigins = [
   "https://simulant.shop",
   "https://console.simulant.shop",
   "https://login.simulant.shop",
