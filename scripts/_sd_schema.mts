@@ -1,0 +1,11 @@
+import { createClient } from "@libsql/client";
+const c = createClient({ url: process.env.SD_URL!, authToken: process.env.SD_TOK });
+console.log("=== schools ===");
+const sc = await c.execute("PRAGMA table_info(schools)");
+for (const r of sc.rows) console.log(`  ${r.cid}: ${r.name} (${r.type})${r.notnull ? ' NOT NULL' : ''}${r.dflt_value !== null ? ` default ${r.dflt_value}` : ''}`);
+console.log("\n=== users ===");
+const us = await c.execute("PRAGMA table_info(users)");
+for (const r of us.rows) console.log(`  ${r.cid}: ${r.name} (${r.type})${r.notnull ? ' NOT NULL' : ''}${r.dflt_value !== null ? ` default ${r.dflt_value}` : ''}`);
+console.log("\n=== role values ===");
+const roles = await c.execute("SELECT DISTINCT role FROM users WHERE role IS NOT NULL");
+console.log(roles.rows.map((r) => r.role).join(", "));
