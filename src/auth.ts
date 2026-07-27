@@ -18,6 +18,33 @@ import {
 import { recordAuthEvent, mapEndpointToEvent, extractIp } from "./audit";
 
 /**
+ * Fail closed on a missing / known-weak signing secret. This one value signs
+ * every session cookie across the whole ecosystem, so a missing or default
+ * secret means forgeable admin sessions on every app — and better-auth
+ * silently falls back to a world-known default when it is unset, so we must
+ * assert it here rather than trust `process.env.X!`. Guards in ALL
+ * environments (a preview/build deploy on the default secret is just as
+ * forgeable as prod).
+ */
+function requireAuthSecret(): string {
+  const secret = process.env.BETTER_AUTH_SECRET?.trim();
+  const KNOWN_WEAK = new Set([
+    // better-auth's built-in default
+    "better-auth-secret-12345678901234567890",
+    // the previously-committed secret (now to be rotated) — reject so a stale
+    // env can never silently reuse the leaked value
+    "MUvQoxeyE9+pk/bHFLcQBnIUEP6kFfDOypD9YF+0dzo=",
+  ]);
+  if (!secret || secret.length < 32 || KNOWN_WEAK.has(secret)) {
+    throw new Error(
+      "[@simulant/auth] BETTER_AUTH_SECRET is missing, too short, or a known-weak/leaked value. " +
+        "Refusing to boot. Set a fresh 32+ byte secret (openssl rand -base64 32), identical across all apps.",
+    );
+  }
+  return secret;
+}
+
+/**
  * Single source of truth for which origins the auth host trusts.
  *
  * Better-Auth consumes this as its `trustedOrigins` for CSRF/origin
@@ -76,7 +103,7 @@ export const auth = betterAuth({
   // tokens from /api/auth/oauth2/token after this swap.
   disabledPaths: ["/token"],
 
-  secret: process.env.BETTER_AUTH_SECRET!,
+  secret: requireAuthSecret(),
   baseURL: process.env.BETTER_AUTH_URL!,
 
   emailAndPassword: {
@@ -206,6 +233,17 @@ export const auth = betterAuth({
   },
 
   advanced: {
+    /**
+     * Rate-limit / audit IP resolution. better-auth's default reads the
+     * leftmost `x-forwarded-for` value, which the client fully controls —
+     * so a rotating XFF header defeats the per-IP sign-in limiter. Behind
+     * Coolify/Traefik the proxy sets `x-real-ip` to the true peer address,
+     * so prefer that (then cf-connecting-ip if Cloudflare fronts it). If a
+     * deploy ever runs without a trusted proxy, review this list.
+     */
+    ipAddress: {
+      ipAddressHeaders: ["x-real-ip", "cf-connecting-ip"],
+    },
     crossSubDomainCookies: {
       enabled: true,
       domain: ".simulant.shop",

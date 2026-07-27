@@ -40,7 +40,7 @@ Everything else flagged below is informational.
 ### 1.1 Cookie signing
 - **Algorithm:** Better-Auth uses HMAC-SHA256 over the session token
   with `BETTER_AUTH_SECRET`. Standard. Not user-configurable in 1.6.x.
-- **Key entropy:** `MUvQoxeyE9+pk/bHFLcQBnIUEP6kFfDOypD9YF+0dzo=` —
+- **Key entropy:** `<REDACTED — rotated 2026-07-27, was committed here; see rotation runbook>` —
   32 bytes from `openssl rand -base64 32`. ~256 bits. ✅
 - **Key distribution:** same secret on every app. Required for
   cross-subdomain cookie validation. Each app holds the secret in its
