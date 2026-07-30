@@ -109,6 +109,43 @@ async function ensureActiveOrganizationOnSession(
   return organizationId;
 }
 
+async function getFirstOrganizationIdForUser(userId: string): Promise<string | null> {
+  const [firstMembership] = await db
+    .select({ organizationId: member.organizationId })
+    .from(member)
+    .where(eq(member.userId, userId))
+    .orderBy(asc(member.createdAt), asc(member.id))
+    .limit(1);
+
+  return firstMembership?.organizationId ?? null;
+}
+
+async function ensureActiveOrganizationOnCreatedSession(createdSession: {
+  id?: string | null;
+  userId?: string | null;
+  activeOrganizationId?: string | null;
+}): Promise<string | null> {
+  if (createdSession.activeOrganizationId) return createdSession.activeOrganizationId;
+  if (!createdSession.id || !createdSession.userId) return null;
+
+  const organizationId = await getFirstOrganizationIdForUser(createdSession.userId);
+  if (!organizationId) return null;
+
+  await db
+    .update(sessionTable)
+    .set({ activeOrganizationId: organizationId })
+    .where(
+      and(
+        eq(sessionTable.id, createdSession.id),
+        eq(sessionTable.userId, createdSession.userId),
+        isNull(sessionTable.activeOrganizationId),
+      ),
+    );
+
+  createdSession.activeOrganizationId = organizationId;
+  return organizationId;
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "sqlite" }),
 
@@ -202,19 +239,19 @@ export const auth = betterAuth({
       create: {
         async before(session) {
           if (session.activeOrganizationId || !session.userId) return;
-          const [firstMembership] = await db
-            .select({ organizationId: member.organizationId })
-            .from(member)
-            .where(eq(member.userId, session.userId))
-            .orderBy(asc(member.createdAt), asc(member.id))
-            .limit(1);
-          if (!firstMembership?.organizationId) return;
+          const organizationId = await getFirstOrganizationIdForUser(session.userId);
+          if (!organizationId) return;
           return {
             data: {
               ...session,
-              activeOrganizationId: firstMembership.organizationId,
+              activeOrganizationId: organizationId,
             },
           };
+        },
+        async after(session) {
+          await ensureActiveOrganizationOnCreatedSession(session).catch((err) => {
+            console.error("[auth] failed to set default active organization on created session:", err);
+          });
         },
       },
     },
