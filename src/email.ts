@@ -21,6 +21,8 @@
 // build time. The runtime require() still picks up the real module
 // when SMTP_HOST is configured.
 
+import { publicAuthUrl } from "./public-url";
+
 const DEFAULT_FROM = "Simulant <noreply@simulant.shop>";
 
 function fromAddress(): string {
@@ -41,7 +43,8 @@ export async function sendPasswordReset({
   url: string;
 }): Promise<void> {
   const subject = "Nulstil dit Simulant-kodeord";
-  const html = renderResetEmail({ name, url });
+  const safeUrl = publicAuthUrl(url);
+  const html = renderResetEmail({ name, url: safeUrl });
 
   if (process.env.SMTP_HOST) {
     await sendViaSmtp({ to, subject, html });
@@ -53,7 +56,7 @@ export async function sendPasswordReset({
   }
   console.warn(
     "[simulant-auth] No email backend configured (SMTP_HOST or RESEND_API_KEY). Reset URL:",
-    url,
+    safeUrl,
   );
 }
 
@@ -70,7 +73,8 @@ export async function sendVerificationEmail({
   url: string;
 }): Promise<void> {
   const subject = "Bekræft din e-mail på Simulant";
-  const html = renderVerificationEmail({ name, url });
+  const safeUrl = publicAuthUrl(url);
+  const html = renderVerificationEmail({ name, url: safeUrl });
 
   if (process.env.SMTP_HOST) {
     await sendViaSmtp({ to, subject, html });
@@ -82,7 +86,7 @@ export async function sendVerificationEmail({
   }
   console.warn(
     "[simulant-auth] No email backend configured. Verification URL:",
-    url,
+    safeUrl,
   );
 }
 
@@ -103,7 +107,8 @@ export async function sendOrgInvitation({
   url: string;
 }): Promise<void> {
   const subject = `Invitation til ${orgName} på Simulant`;
-  const html = renderOrgInvitationEmail({ inviterName, orgName, role, url });
+  const safeUrl = publicAuthUrl(url);
+  const html = renderOrgInvitationEmail({ inviterName, orgName, role, url: safeUrl });
 
   if (process.env.SMTP_HOST) {
     await sendViaSmtp({ to, subject, html });
@@ -115,7 +120,7 @@ export async function sendOrgInvitation({
   }
   console.warn(
     "[simulant-auth] No email backend configured. Invitation URL:",
-    url,
+    safeUrl,
   );
 }
 
@@ -165,7 +170,8 @@ export async function sendMagicLink({
   url: string;
 }): Promise<void> {
   const subject = "Log ind på Simulant";
-  const html = renderMagicLinkEmail({ url });
+  const safeUrl = publicAuthUrl(url);
+  const html = renderMagicLinkEmail({ url: safeUrl });
 
   if (process.env.SMTP_HOST) {
     await sendViaSmtp({ to, subject, html });
@@ -177,7 +183,7 @@ export async function sendMagicLink({
   }
   console.warn(
     "[simulant-auth] No email backend configured. Magic link URL:",
-    url,
+    safeUrl,
   );
 }
 
