@@ -5,9 +5,9 @@ import type { Jwk } from "better-auth/plugins";
 import { createAuthMiddleware } from "better-auth/api";
 import { passkey } from "@better-auth/passkey";
 import { oauthProvider } from "@better-auth/oauth-provider";
-import { eq, and } from "drizzle-orm";
+import { asc, eq, and, isNull } from "drizzle-orm";
 import { db } from "./db";
-import { member } from "./schema";
+import { member, session as sessionTable } from "./schema";
 import {
   ac,
   superadmin,
@@ -95,6 +95,84 @@ export const trustedOrigins = [
 let jwksCache: { rows: Jwk[]; at: number } | null = null;
 const JWKS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min — long enough to kill the flood, short enough that a manual key rotation propagates fast.
 
+async function ensureActiveOrganizationOnSession(
+  current:
+    | {
+        user?: { id?: string | null } | null;
+        session?: { id?: string | null; activeOrganizationId?: string | null } | null;
+      }
+    | null
+    | undefined,
+): Promise<string | null> {
+  const userId = current?.user?.id;
+  const currentSession = current?.session;
+  const sessionId = currentSession?.id;
+  const activeOrganizationId = currentSession?.activeOrganizationId ?? null;
+  if (!userId || !sessionId) return activeOrganizationId;
+  if (activeOrganizationId) return activeOrganizationId;
+
+  const [firstMembership] = await db
+    .select({ organizationId: member.organizationId })
+    .from(member)
+    .where(eq(member.userId, userId))
+    .orderBy(asc(member.createdAt), asc(member.id))
+    .limit(1);
+
+  const organizationId = firstMembership?.organizationId ?? null;
+  if (!organizationId) return null;
+
+  await db
+    .update(sessionTable)
+    .set({ activeOrganizationId: organizationId })
+    .where(
+      and(
+        eq(sessionTable.id, sessionId),
+        eq(sessionTable.userId, userId),
+        isNull(sessionTable.activeOrganizationId),
+      ),
+    );
+
+  currentSession.activeOrganizationId = organizationId;
+  return organizationId;
+}
+
+async function getFirstOrganizationIdForUser(userId: string): Promise<string | null> {
+  const [firstMembership] = await db
+    .select({ organizationId: member.organizationId })
+    .from(member)
+    .where(eq(member.userId, userId))
+    .orderBy(asc(member.createdAt), asc(member.id))
+    .limit(1);
+
+  return firstMembership?.organizationId ?? null;
+}
+
+async function ensureActiveOrganizationOnCreatedSession(createdSession: {
+  id?: string | null;
+  userId?: string | null;
+  activeOrganizationId?: string | null;
+}): Promise<string | null> {
+  if (createdSession.activeOrganizationId) return createdSession.activeOrganizationId;
+  if (!createdSession.id || !createdSession.userId) return null;
+
+  const organizationId = await getFirstOrganizationIdForUser(createdSession.userId);
+  if (!organizationId) return null;
+
+  await db
+    .update(sessionTable)
+    .set({ activeOrganizationId: organizationId })
+    .where(
+      and(
+        eq(sessionTable.id, createdSession.id),
+        eq(sessionTable.userId, createdSession.userId),
+        isNull(sessionTable.activeOrganizationId),
+      ),
+    );
+
+  createdSession.activeOrganizationId = organizationId;
+  return organizationId;
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "sqlite" }),
 
@@ -168,6 +246,11 @@ export const auth = betterAuth({
     window: 60,
     max: 30,
     customRules: {
+      // Session reads happen once or more per server-rendered page across the
+      // entire app fleet. They are authenticated, non-mutating requests and
+      // must not share the credential-attempt budget; otherwise normal rapid
+      // navigation turns into a cross-app 429/login loop.
+      "/get-session": { window: 60, max: 600 },
       "/sign-in/email": { window: 60, max: 5 },
       "/sign-up/email": { window: 60 * 60, max: 3 },
       "/forget-password": { window: 60 * 60, max: 3 },
@@ -180,6 +263,29 @@ export const auth = betterAuth({
       "/sign-in/magic-link": { window: 60 * 60, max: 5 },
       "/email-otp/send-verification-otp": { window: 60 * 60, max: 5 },
       "/two-factor/verify": { window: 60, max: 5 },
+    },
+  },
+
+  databaseHooks: {
+    session: {
+      create: {
+        async before(session) {
+          if (session.activeOrganizationId || !session.userId) return;
+          const organizationId = await getFirstOrganizationIdForUser(session.userId);
+          if (!organizationId) return;
+          return {
+            data: {
+              ...session,
+              activeOrganizationId: organizationId,
+            },
+          };
+        },
+        async after(session) {
+          await ensureActiveOrganizationOnCreatedSession(session).catch((err) => {
+            console.error("[auth] failed to set default active organization on created session:", err);
+          });
+        },
+      },
     },
   },
 
@@ -200,11 +306,14 @@ export const auth = betterAuth({
         ? ctx.context.returned.status
         : 200;
       const event = mapEndpointToEvent(ctx.path, status);
-      if (!event) return;
-
       const headerList = ctx.headers ?? new Headers();
       const session = ctx.context.session ?? null;
       const body = (ctx.body ?? {}) as Record<string, unknown>;
+      const organizationId = await ensureActiveOrganizationOnSession(session).catch((err) => {
+        console.error("[auth] failed to set default active organization:", err);
+        return session?.session?.activeOrganizationId ?? null;
+      });
+      if (!event) return;
 
       void recordAuthEvent({
         action: event.action,
@@ -213,7 +322,7 @@ export const auth = betterAuth({
         userEmail: session?.user?.email ?? (typeof body.email === "string" ? body.email : null),
         organizationId:
           (typeof body.organizationId === "string" ? body.organizationId : null) ??
-          session?.session?.activeOrganizationId ??
+          organizationId ??
           null,
         actorUserId: session?.user?.id ?? null,
         actorEmail: session?.user?.email ?? null,
