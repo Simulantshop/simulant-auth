@@ -219,6 +219,10 @@ export const auth = betterAuth({
     window: 60,
     max: 30,
     customRules: {
+      // Session reads are authenticated and non-mutating. They occur across
+      // several apps during normal navigation and must not consume the much
+      // stricter credential-attempt budget.
+      "/get-session": { window: 60, max: 600 },
       "/sign-in/email": { window: 60, max: 5 },
       "/sign-up/email": { window: 60 * 60, max: 3 },
       "/forget-password": { window: 60 * 60, max: 3 },
