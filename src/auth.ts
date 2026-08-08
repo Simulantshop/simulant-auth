@@ -32,6 +32,7 @@ export const trustedOrigins = [
   "https://simulant.shop",
   "https://console.simulant.shop",
   "https://login.simulant.shop",
+  "https://my.simulant.shop",
   "https://nordbank.simulant.shop",
   "https://skat.simulant.shop",
   "https://expense.simulant.shop",
