@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization, admin, jwt, emailOTP, magicLink } from "better-auth/plugins";
 import type { Jwk } from "better-auth/plugins";
-import { createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { passkey } from "@better-auth/passkey";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { asc, eq, and, isNull } from "drizzle-orm";
@@ -17,6 +17,7 @@ import {
 } from "./permissions";
 import { recordAuthEvent, mapEndpointToEvent, extractIp } from "./audit";
 import { AUTH_RATE_LIMIT_RULES } from "./rate-limit";
+import { normalizeDisplayName } from "./profile-validation";
 
 /**
  * Single source of truth for which origins the auth host trusts.
@@ -224,6 +225,33 @@ export const auth = betterAuth({
   },
 
   databaseHooks: {
+    user: {
+      create: {
+        async before(user) {
+          try {
+            return { data: { ...user, name: normalizeDisplayName(user.name) } };
+          } catch (error) {
+            throw new APIError("BAD_REQUEST", {
+              code: "INVALID_DISPLAY_NAME",
+              message: error instanceof Error ? error.message : "Invalid name",
+            });
+          }
+        },
+      },
+      update: {
+        async before(user) {
+          if (user.name === undefined) return;
+          try {
+            return { data: { ...user, name: normalizeDisplayName(user.name) } };
+          } catch (error) {
+            throw new APIError("BAD_REQUEST", {
+              code: "INVALID_DISPLAY_NAME",
+              message: error instanceof Error ? error.message : "Invalid name",
+            });
+          }
+        },
+      },
+    },
     session: {
       create: {
         async before(session) {
