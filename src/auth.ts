@@ -18,6 +18,7 @@ import {
 import { recordAuthEvent, mapEndpointToEvent, extractIp } from "./audit";
 import { AUTH_RATE_LIMIT_RULES } from "./rate-limit";
 import { normalizeDisplayName } from "./profile-validation";
+import { resolveSimulantRoleClaim } from "./oauth-role-claims";
 
 /**
  * Single source of truth for which origins the auth host trusts.
@@ -424,23 +425,16 @@ export const auth = betterAuth({
       // No org on the client, or the user isn't a member → no claim, and the
       // module falls back to its non-role default behaviour.
       customIdTokenClaims: async ({ user, metadata }) => {
-        const orgId =
-          metadata && typeof metadata.organizationId === "string"
-            ? metadata.organizationId
-            : null;
-        if (!orgId || !user?.id) return {};
-        try {
+        return resolveSimulantRoleClaim(user?.id, metadata, async (userId, orgId) => {
           const [m] = await db
             .select({ role: member.role })
             .from(member)
             .where(
-              and(eq(member.userId, user.id), eq(member.organizationId, orgId)),
+              and(eq(member.userId, userId), eq(member.organizationId, orgId)),
             )
             .limit(1);
-          return m?.role ? { simulant_role: m.role } : {};
-        } catch {
-          return {};
-        }
+          return m?.role ?? null;
+        });
       },
       // Issuer + endpoints derive from BETTER_AUTH_URL automatically.
       // PrestaShop's stackauthadmin module uses these to validate tokens.
