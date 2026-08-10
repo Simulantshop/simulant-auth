@@ -29,16 +29,16 @@
     "drizzle-orm": "^0.45.2"
   },
   "dependencies": {
-    "@better-auth/oauth-provider": "^1.6.9",
-    "@better-auth/passkey": "^1.6.9",
+    "@better-auth/oauth-provider": "^1.6.26",
+    "@better-auth/passkey": "^1.6.26",
     "dotenv": "^17.4.2",
-    "nodemailer": "^8.0.7"
+    "nodemailer": "^9.0.5"
   },
   "devDependencies": {
     "@better-auth/cli": "^1.4.22",
     "@libsql/client": "^0.14.0",
     "@types/nodemailer": "^8.0.0",
-    "better-auth": "^1.6.0",
+    "better-auth": "^1.6.26",
     "drizzle-kit": "^0.31.4",
     "drizzle-orm": "^0.45.2",
     "typescript": "^5.6.0"
