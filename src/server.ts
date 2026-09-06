@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { auth } from "./auth";
 import type { Session } from "./auth";
 import { db, schema } from "./db";
@@ -39,7 +39,7 @@ export type SafeSession = Session | null;
  */
 export async function getSafeSession(headers: Headers): Promise<SafeSession> {
   try {
-    return await auth.api.getSession({ headers });
+    return await auth.api.getSession({ headers, query: { disableCookieCache: true } });
   } catch (err) {
     console.error(
       "[@simulant/auth] getSession failed; treating request as signed-out:",
@@ -74,7 +74,7 @@ export function parseOrgMetadata(raw: string | null | undefined): OrgMetadata {
 
 /** Whether a school has a given app turned on in console (entitlement slug). */
 export function orgHasEntitlement(meta: OrgMetadata, slug: string): boolean {
-  return Array.isArray(meta.entitlements) && meta.entitlements.includes(slug);
+  return !meta.archived && Array.isArray(meta.entitlements) && meta.entitlements.includes(slug);
 }
 
 export interface ResolvedOrg {
@@ -98,11 +98,12 @@ const ORG_COLUMNS = {
   metadata: schema.organization.metadata,
 } as const;
 
-async function selectOrgById(orgId: string): Promise<RawOrgRow | null> {
+async function selectOrgById(userId: string, orgId: string): Promise<RawOrgRow | null> {
   const rows = (await db
     .select(ORG_COLUMNS)
-    .from(schema.organization)
-    .where(eq(schema.organization.id, orgId))
+    .from(schema.member)
+    .innerJoin(schema.organization, eq(schema.member.organizationId, schema.organization.id))
+    .where(and(eq(schema.member.userId, userId), eq(schema.member.organizationId, orgId)))
     .limit(1)) as RawOrgRow[];
   return rows[0] ?? null;
 }
@@ -118,6 +119,7 @@ async function selectFirstMembershipOrg(
       eq(schema.member.organizationId, schema.organization.id),
     )
     .where(eq(schema.member.userId, userId))
+    .orderBy(asc(schema.member.createdAt), asc(schema.member.id))
     .limit(1)) as RawOrgRow[];
   return rows[0] ?? null;
 }
@@ -131,18 +133,7 @@ export async function resolveActiveOrgId(
   userId: string,
   activeOrganizationId: string | null | undefined,
 ): Promise<string | null> {
-  if (activeOrganizationId) return activeOrganizationId;
-  try {
-    const rows = (await db
-      .select({ organizationId: schema.member.organizationId })
-      .from(schema.member)
-      .where(eq(schema.member.userId, userId))
-      .limit(1)) as { organizationId: string }[];
-    return rows[0]?.organizationId ?? null;
-  } catch (err) {
-    console.error("[@simulant/auth] resolveActiveOrgId fallback failed:", err);
-    return null;
-  }
+  return (await resolveActiveOrg(userId, activeOrganizationId))?.id ?? null;
 }
 
 /**
@@ -156,9 +147,9 @@ export async function resolveActiveOrg(
 ): Promise<ResolvedOrg | null> {
   try {
     let org: RawOrgRow | null = null;
-    if (activeOrganizationId) org = await selectOrgById(activeOrganizationId);
-    if (!org) org = await selectFirstMembershipOrg(userId);
-    if (!org) return null;
+    if (activeOrganizationId) org = await selectOrgById(userId, activeOrganizationId);
+    else org = await selectFirstMembershipOrg(userId);
+    if (!org || parseOrgMetadata(org.metadata).archived) return null;
     return {
       id: org.id,
       name: org.name,
@@ -211,4 +202,17 @@ export async function resolveWorkspace(opts: {
   const entitled =
     !opts.appSlug || (org != null && orgHasEntitlement(org.metadata, opts.appSlug));
   return { user, org, unauthenticated: false, entitled };
+}
+
+/** Global authority comes only from Console's canonical admin membership. */
+export async function isPlatformSuperadmin(userId: string): Promise<boolean> {
+  const teamId = process.env.SIMULANT_ADMIN_TEAM_ID;
+  if (!teamId || !userId) return false;
+  try {
+    const [member] = await db.select({ id: schema.member.id }).from(schema.member).where(and(
+      eq(schema.member.userId, userId), eq(schema.member.organizationId, teamId),
+      eq(schema.member.role, "superadmin"),
+    )).limit(1);
+    return !!member;
+  } catch { return false; }
 }
