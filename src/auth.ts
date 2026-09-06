@@ -1,3 +1,4 @@
+import { organization as organizationTable } from "./schema";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { organization, admin, jwt, emailOTP, magicLink } from "better-auth/plugins";
@@ -430,17 +431,24 @@ export const auth = betterAuth({
             : null;
         if (!orgId || !user?.id) return {};
         try {
-          const [m] = await db
-            .select({ role: member.role })
-            .from(member)
-            .where(
-              and(eq(member.userId, user.id), eq(member.organizationId, orgId)),
-            )
-            .limit(1);
-          return m?.role ? { simulant_role: m.role } : {};
-        } catch {
-          return {};
-        }
+          const [org] = await db.select({ metadata: organizationTable.metadata }).from(organizationTable)
+            .where(eq(organizationTable.id, orgId)).limit(1);
+          if (!org) return {};
+          const orgMetadata = JSON.parse(org.metadata ?? "{}");
+          if (orgMetadata?.archived) return {};
+          const adminTeamId = process.env.SIMULANT_ADMIN_TEAM_ID;
+          if (adminTeamId) {
+            const [adminMember] = await db.select({ id: member.id }).from(member).where(and(
+              eq(member.userId, user.id), eq(member.organizationId, adminTeamId), eq(member.role, "superadmin"),
+            )).limit(1);
+            if (adminMember) return { simulant_role: "superadmin" };
+          }
+          const [m] = await db.select({ role: member.role }).from(member).where(and(
+            eq(member.userId, user.id), eq(member.organizationId, orgId),
+          )).limit(1);
+          return m && ["student", "student_manager", "workspace_admin", "superadmin"].includes(m.role)
+            ? { simulant_role: m.role } : {};
+        } catch { return {}; }
       },
       // Issuer + endpoints derive from BETTER_AUTH_URL automatically.
       // PrestaShop's stackauthadmin module uses these to validate tokens.
