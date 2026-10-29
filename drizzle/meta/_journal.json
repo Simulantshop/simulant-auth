@@ -15,6 +15,13 @@
       "when": 1780303652106,
       "tag": "0001_member_userid_orgid_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793273890092,
+      "tag": "0002_oauth_session_cascade_indexes",
+      "breakpoints": true
     }
   ]
 }
