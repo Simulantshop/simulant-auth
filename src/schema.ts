@@ -265,7 +265,11 @@ export const oauthRefreshToken = sqliteTable("oauth_refresh_token", {
   revoked: integer("revoked", { mode: "timestamp_ms" }),
   authTime: integer("auth_time", { mode: "timestamp_ms" }),
   scopes: text("scopes", { mode: "json" }).notNull(),
-});
+}, (table) => [
+  // Session removal must seek its dependent tokens instead of scanning the
+  // token table once for every expired session.
+  index("oauth_refresh_token_sessionId_idx").on(table.sessionId),
+]);
 
 export const oauthAccessToken = sqliteTable("oauth_access_token", {
   id: text("id").primaryKey(),
@@ -284,7 +288,11 @@ export const oauthAccessToken = sqliteTable("oauth_access_token", {
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }),
   scopes: text("scopes", { mode: "json" }).notNull(),
-});
+}, (table) => [
+  index("oauth_access_token_sessionId_idx").on(table.sessionId),
+  // Removing a refresh token also checks/cascades its access tokens.
+  index("oauth_access_token_refreshId_idx").on(table.refreshId),
+]);
 
 export const oauthConsent = sqliteTable("oauth_consent", {
   id: text("id").primaryKey(),
